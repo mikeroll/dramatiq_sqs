@@ -42,7 +42,8 @@ dramatiq.set_broker(broker)
 ```
 
 
-## Usage with [ElasticMQ]
+## Usage with [ElasticMQ] or [LocalStack]
+Set `endpoint_url` to the URL of the service providing the SQS endpoint.
 
 ``` python
 broker = SQSBroker(
@@ -87,3 +88,4 @@ dramatiq_sqs is licensed under Apache 2.0.  Please see
 [docs]: https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration
 [LICENSE]: https://github.com/Bogdanp/dramatiq_sqs/blob/master/LICENSE
 [ElasticMQ]: https://github.com/adamw/elasticmq
+[LocalStack]: https://github.com/localstack/localstack
