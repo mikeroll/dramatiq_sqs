@@ -94,19 +94,23 @@ class SQSBroker(dramatiq.Broker):
         return SQSConsumer
 
     def consume(self, queue_name: str, prefetch: int = 1, timeout: int = 30000) -> dramatiq.Consumer:
-        try:
-            queue = self.queues[queue_name]
-        except KeyError:  # pragma: no cover
-            raise dramatiq.QueueNotFound(queue_name)
+        self._declare_queue(queue_name)
 
-        dead_letter_queue = self.dead_letter_queues.get(queue_name, None)
+        queue = self.queues[queue_name]
+        dead_letter_queue = self.dead_letter_queues[queue_name] if self.dead_letter else None
 
         return self.consumer_class(queue, prefetch, timeout, dead_letter_queue=dead_letter_queue)
 
     def declare_queue(self, queue_name: str) -> None:
+        self.queues.setdefault(queue_name, None)
+
+    def _declare_queue(self, queue_name: str) -> None:
+        if queue_name not in self.queues:
+            raise dramatiq.QueueNotFound(queue_name)
+
         sqs_queue_name = f"{self.namespace}_{queue_name}" if self.namespace else queue_name
 
-        if queue_name not in self.queues:
+        if self.queues[queue_name] is None:
             self.emit_before("declare_queue", queue_name)
             self.queues[queue_name] = self._declare_sqs_queue(
                 sqs_queue_name,
@@ -117,7 +121,7 @@ class SQSBroker(dramatiq.Broker):
 
         sqs_dead_letter_queue_name = f"{sqs_queue_name}_dlq"
 
-        if self.dead_letter and queue_name not in self.dead_letter_queues:
+        if self.dead_letter and self.dead_letter_queues.get(queue_name) is None:
             self.dead_letter_queues[queue_name] = self._declare_sqs_queue(
                 sqs_dead_letter_queue_name,
                 message_retention_period=self.dead_letter_retention,
@@ -152,6 +156,8 @@ class SQSBroker(dramatiq.Broker):
 
     def enqueue(self, message: dramatiq.Message, *, delay: Optional[int] = None) -> dramatiq.Message:
         queue_name = message.queue_name
+        self._declare_queue(queue_name)
+
         queue = self.queues[queue_name]
         delay_seconds = (delay or 0) // 1000
 
