@@ -226,7 +226,8 @@ class SQSConsumer(dramatiq.Consumer):
             # Then delete the ones that were successfully re-enqueued.
             # The rest will have to wait until their visibility
             # timeout expires.
-            failed_message_ids = [int(res["Id"]) for res in send_response.get("Failed", [])]
+            failed_messages = send_response.get("Failed", [])
+            failed_message_ids = set(int(res["Id"]) for res in failed_messages)
             requeued_messages = [m for i, m in enumerate(batch) if i not in failed_message_ids]
             self.queue.delete_messages(Entries=[{
                 "Id": str(i),
@@ -234,6 +235,9 @@ class SQSConsumer(dramatiq.Consumer):
             } for i, message in enumerate(requeued_messages)])
 
             self.message_refc -= len(requeued_messages)
+
+            if failed_messages:
+                raise RuntimeError(f"{len(failed_messages)} failed to requeue.")
 
     def __next__(self) -> Optional[dramatiq.Message]:
         kw = {
