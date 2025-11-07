@@ -69,6 +69,7 @@ class SQSBroker(dramatiq.Broker):
             retention: int = MAX_MESSAGE_RETENTION_SECONDS,
             dead_letter: bool = False,
             dead_letter_retention: int = MAX_MESSAGE_RETENTION_SECONDS,
+            visibility_timeout: Optional[int] = MAX_VISIBILITY_TIMEOUT_SECONDS,
             tags: Optional[Dict[str, str]] = None,
             **options,
     ) -> None:
@@ -83,6 +84,7 @@ class SQSBroker(dramatiq.Broker):
         self.namespace: Optional[str] = namespace
         self.retention: int = retention
         self.queues: Dict[str, Any] = {}
+        self.visibility_timeout = visibility_timeout
         self.dead_letter: bool = dead_letter
         self.dead_letter_queues: Dict[str, Any] = {}
         self.dead_letter_retention: int = dead_letter_retention
@@ -99,7 +101,13 @@ class SQSBroker(dramatiq.Broker):
         queue = self.queues[queue_name]
         dead_letter_queue = self.dead_letter_queues[queue_name] if self.dead_letter else None
 
-        return self.consumer_class(queue, prefetch, timeout, dead_letter_queue=dead_letter_queue)
+        return self.consumer_class(
+            queue,
+            prefetch,
+            timeout,
+            dead_letter_queue=dead_letter_queue,
+            visibility_timeout=self.visibility_timeout,
+        )
 
     def declare_queue(self, queue_name: str) -> None:
         self.queues.setdefault(queue_name, None)
@@ -187,12 +195,29 @@ class SQSBroker(dramatiq.Broker):
 
 
 class SQSConsumer(dramatiq.Consumer):
-    def __init__(self, queue: Any,  prefetch: int, timeout: int, dead_letter_queue: Optional[Any] = None) -> None:
+    def __init__(
+        self, 
+        queue: Any, 
+        prefetch: int, 
+        timeout: int,
+        dead_letter_queue: Optional[Any] = None,
+        *,
+        visibility_timeout: Optional[int] = None,
+    ) -> None:
         self.logger = get_logger(__name__, type(self))
         self.queue = queue
         self.dead_letter_queue = dead_letter_queue
         self.prefetch = min(prefetch, MAX_PREFETCH)
-        self.visibility_timeout = MAX_VISIBILITY_TIMEOUT_SECONDS
+        
+        self.visibility_timeout = visibility_timeout
+
+        if self.visibility_timeout is not None and self.visibility_timeout > MAX_VISIBILITY_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"The message visibility timeout of {self.visibility_timeout} is higher than "
+                f"the maximum supported ({MAX_VISIBILITY_TIMEOUT_SECONDS})."
+            )
+
+
         self.wait_time_seconds = timeout // 1000
 
         if self.wait_time_seconds > MAX_WAIT_TIME_SECONDS:
